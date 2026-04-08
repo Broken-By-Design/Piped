@@ -1,0 +1,9 @@
+discord.py[voice]
+yt-dlp
+fastapi
+uvicorn[standard]
+websockets
+requests
+python-dotenv
+aiofiles
+aiohttp

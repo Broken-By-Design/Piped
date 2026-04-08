@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Piped</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <header class="topbar">
+            <span class="logo">🎵 Piped</span>
+            <span class="status" id="status">Connecting...</span>
+        </header>
+
+        <main class="layout">
+            <!---Left: Now Playing + Controls -->
+            <section class="player-panel">
+                <div class="now-playing" id="nowPlaying">
+                    <img id="thumbnail" src="" alt="Cover art" />
+                    <div class="track-info">
+                        <div class="track-title" id="trackTitle">
+                            Nothing playing
+                        </div>
+                        <div class="track-artist" id="trackArtist">-</div>
+                        <div class="track-source" id="trackSource"></div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button
+                        id="btnShuffle"
+                        oneclick="api('shuffle')"
+                        title="Shuffle"
+                    >
+                        🔀
+                    </button>
+                    <button
+                        id="btnPause"
+                        onclick="togglePause()"
+                        title="Pause/Resume"
+                    >
+                        ⏸
+                    </button>
+                    <button onclick="api('skip')" title="Skip">⏭</button>
+                    <button id="btnLoop" onclick="cycleloop()" title="Loop">
+                        ➡️
+                    </button>
+                    <button onclick="api('stop')" title="Stop">⏹</button>
+                </div>
+
+                <div class="volume-row">
+                    <span>🔊</span>
+                    <input
+                        type="range"
+                        id="volumeSlider"
+                        min="0"
+                        max="100"
+                        value="50"
+                        oninput="setVolume(this.value)"
+                    />
+                    <span id="volumeLabel">50%</span>
+                </div>
+
+                <form class="search-form" id="searchform">
+                    <input
+                        type="text"
+                        id="searchInput"
+                        placeholder="Search for a song or paste a URL. . ."
+                    />
+                    <button type="submit">Play</button>
+                </form>
+            </section>
+            <!-- Right: Queue -->
+            <section class="queue-panel">
+                <h2>📋 Queue</h2>
+                <div id="queueList"></div>
+            </section>
+        </main>
+        <script src="app.js"></script>
+    </body>
+</html>
