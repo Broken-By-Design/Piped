@@ -253,13 +253,10 @@ class MusicPlayer:
                         # Build FFmpeg options dynamically
             b_opts = []
 
-            # These flags are ONLY valid if the primary input is an HTTP stream (like yt-dlp)
             if play_url.startswith("http"):
                 b_opts.append('-user_agent "piped bot"')
                 b_opts.append("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
 
-            # If playing a local MPD, we just need to whitelist network protocols
-            # so the internal DASH parser is allowed to fetch the audio chunks!
             if play_url.endswith(".mpd"):
                 b_opts.append("-protocol_whitelist file,http,https,tcp,tls,crypto,data")
 
@@ -267,7 +264,6 @@ class MusicPlayer:
                 "before_options": " ".join(b_opts),
                 "options": "-vn",
             }
-
 
             try:
                 source = discord.FFmpegPCMAudio(play_url, **ffmpeg_opts)
