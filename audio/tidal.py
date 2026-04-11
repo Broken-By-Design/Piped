@@ -77,8 +77,9 @@ async def get_tidal_stream(title: str, artist: str, duration: int) -> Optional[s
 
 async def _search(title: str, artist: str, duration: int) -> Optional[str]:
     """Search the Tidal proxy and find the closest match by duration."""
-    url = f"{config.TIDAL_PROXY_URL}/search/"
+    url = f"{config.TIDAL_PROXY_URL}/smartSearch/"
     params = {"s": title, "a": artist, "limit": "5"}
+    print(f"Searching {title} on tidal")
 
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
@@ -98,20 +99,21 @@ async def _search(title: str, artist: str, duration: int) -> Optional[str]:
         return None
 
     items = data.get("data", {}).get("items", [])
+    print(items)
     if not items:
         return None
 
-    best = None
-    best_diff = 999
-    for item in items:
-        diff = abs(item.get("duration", 0) - duration)
-        if diff < best_diff:
-            best_diff = diff
-            best = item
+    best = items[0]
+    # best_diff = 999
+    # for item in items:
+    #     diff = abs(item.get("duration", 0) - duration)
+    #     if diff < best_diff:
+    #         best_diff = diff
+    #         best = item
 
-    if best and best_diff <= 10:
-        print(f"[TIDAL] Match found: {best.get('title')} (ID: {best.get('id')})")
-        return best["id"]
+    # if best and best_diff <= 10:
+    #     print(f"[TIDAL] Match found: {best.get('title')} (ID: {best.get('id')})")
+    return best["id"]
 
     print(f"[TIDAL] No duration match within 10s (Best diff: {best_diff}s)")
     return None
