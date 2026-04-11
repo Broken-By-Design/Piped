@@ -1,13 +1,16 @@
 import hashlib
+import html
 import json
 import os
 import re
-import xml.etree.ElementTree as ET
 from typing import Optional
 
 import aiohttp
 
 import config
+
+headers = {"User-Agent": "piped bot"}
+
 
 # Directory for caching Tidal stream URLs to prevent repeated manifest lookups
 CACHE_DIR = "data/cache"
@@ -19,8 +22,6 @@ async def get_tidal_stream(title: str, artist: str, duration: int) -> Optional[s
     Try to find a Tidal stream for this track.
     Includes caching and detailed logging to debug why Tidal might fail.
     """
-    # Clean the title to remove YouTube-specific suffixes that break Tidal search
-    # e.g., "Song Name (Official Video)" -> "Song Name"
     clean_title = re.sub(
         r"(\(|\[)(official|video|music|remastered|lyrics|4k|hd|audio|visualizer).*?(\)|\])",
         "",
@@ -38,24 +39,28 @@ async def get_tidal_stream(title: str, artist: str, duration: int) -> Optional[s
         try:
             with open(cache_path, "r") as f:
                 cached_data = json.load(f)
-                print(f"[TIDAL] Cache hit for {clean_title}")
-                return cached_data["url"]
+                # If the cache references a local mpd file, verify it exists
+                cached_url = cached_data["url"]
+                if cached_url.endswith(".mpd") and not os.path.exists(cached_url):
+                    print("[TIDAL] Cached MPD file missing, resolving again.")
+                else:
+                    print(f"[TIDAL] Cache hit for {clean_title}")
+                    return cached_url
         except Exception as e:
             print(f"[TIDAL] Cache read error: {e}")
 
     # 2. Search Tidal
     song_id = await _search(clean_title, artist, duration)
     if not song_id:
-        # If clean title fails, try original title as fallback
         if clean_title != title:
-            print(f"[TIDAL] Search failed with clean title, trying original...")
+            print("[TIDAL] Search failed with clean title, trying original...")
             song_id = await _search(title, artist, duration)
 
         if not song_id:
             print(f"[TIDAL] No match found on Tidal for: {title}")
             return None
 
-    # 3. Resolve Stream URL from Manifest
+    # 3. Resolve Stream URL (or Local MPD Manifest Path)
     stream_url = await _stream_url(song_id)
 
     # 4. Save to Cache if successful
@@ -63,7 +68,7 @@ async def get_tidal_stream(title: str, artist: str, duration: int) -> Optional[s
         try:
             with open(cache_path, "w") as f:
                 json.dump({"url": stream_url, "title": title}, f)
-            print(f"[TIDAL] Successfully resolved and cached Tidal stream.")
+            print("[TIDAL] Successfully resolved and cached Tidal stream.")
         except Exception as e:
             print(f"[TIDAL] Cache write error: {e}")
 
@@ -76,14 +81,18 @@ async def _search(title: str, artist: str, duration: int) -> Optional[str]:
     params = {"s": title, "a": artist, "limit": "5"}
 
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(
                 url, params=params, timeout=aiohttp.ClientTimeout(total=8)
             ) as resp:
                 if resp.status != 200:
                     print(f"[TIDAL] Search API returned status {resp.status}")
                     return None
-                data = await resp.json()
+
+                raw_text = await resp.text()
+                # Parse the JSON manually so aiohttp doesn't crash on text/plain content type
+                data = json.loads(raw_text)
+
     except Exception as e:
         print(f"[TIDAL] Search request failed: {e}")
         return None
@@ -95,7 +104,6 @@ async def _search(title: str, artist: str, duration: int) -> Optional[str]:
     best = None
     best_diff = 999
     for item in items:
-        # Match by duration within 10 seconds (YouTube durations can vary slightly from studio tracks)
         diff = abs(item.get("duration", 0) - duration)
         if diff < best_diff:
             best_diff = diff
@@ -110,61 +118,38 @@ async def _search(title: str, artist: str, duration: int) -> Optional[str]:
 
 
 async def _stream_url(song_id: str) -> Optional[str]:
-    """Fetch the MPD manifest and extract the playable BaseURL."""
-    manifest_api = f"{config.TIDAL_PROXY_URL}/trackManifests/?id={song_id}"
+    """Fetch the MPD manifest and extract the playable URL or save MPD locally."""
+    manifest_api = f"{config.TIDAL_PROXY_URL}/stream/{song_id}"
 
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(manifest_api) as resp:
                 if resp.status != 200:
                     print(f"[TIDAL] Manifest API error: {resp.status}")
                     return None
 
-                data = await resp.json()
-                manifest_url = (
-                    data.get("data", {})
-                    .get("data", {})
-                    .get("attributes", {})
-                    .get("uri")
-                )
+                raw_text = await resp.text()
+                # Parse the JSON manually so aiohttp doesn't crash on text/plain content type
+                data = json.loads(raw_text)
 
-                if not manifest_url:
-                    print("[TIDAL] No manifest URI in API response")
-                    return None
+                # Case 1: Direct audio URL (FLAC/MP4)
+                if data.get("type") == "direct":
+                    return data.get("url")
 
-                print(f"[TIDAL] Fetching manifest: {manifest_url}")
-                async with session.get(manifest_url) as manifest_resp:
-                    if manifest_resp.status != 200:
-                        print(
-                            f"[TIDAL] Manifest download failed: {manifest_resp.status}"
-                        )
-                        return None
+                # Case 2: DASH manifest
+                elif data.get("type") == "dash":
+                    manifest_raw = data.get("manifest", "")
 
-                    manifest_text = await manifest_resp.text()
+                    # Unescape HTML/Unicode characters so it's a valid XML string
+                    manifest_xml = html.unescape(manifest_raw)
 
-                    # Parse the MPEG-DASH XML (.mpd)
-                    # We MUST handle the XML namespace correctly to find the BaseURL
-                    try:
-                        root = ET.fromstring(manifest_text)
+                    # Save the XML to a local .mpd file so FFmpeg can play it directly
+                    mpd_path = os.path.join(CACHE_DIR, f"tidal_{song_id}.mpd")
+                    with open(mpd_path, "w", encoding="utf-8") as f:
+                        f.write(manifest_xml)
 
-                        # The namespace is usually the first part of the tag in '{uri}tag' format
-                        # or we can search specifically for it.
-                        namespace = ""
-                        if root.tag.startswith("{"):
-                            namespace = root.tag.split("}")[0] + "}"
-
-                        # Find BaseURL using the discovered namespace
-                        base_url_node = root.find(f".//{namespace}BaseURL")
-
-                        if base_url_node is not None and base_url_node.text:
-                            return base_url_node.text.strip()
-
-                        print("[TIDAL] <BaseURL> not found in manifest XML")
-                        # Debug: Print first 200 chars of manifest to see why it failed
-                        print(f"[TIDAL] Manifest Snippet: {manifest_text[:200]}")
-
-                    except ET.ParseError as e:
-                        print(f"[TIDAL] XML Parse Error: {e}")
+                    # Return the local path (FFmpeg treats this just like a URL)
+                    return mpd_path
 
     except Exception as e:
         print(f"[TIDAL] Stream resolution failed: {e}")

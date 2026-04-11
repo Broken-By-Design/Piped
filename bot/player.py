@@ -111,6 +111,11 @@ class MusicPlayer:
         if track.local_path and os.path.exists(track.local_path):
             return  # Already buffered
 
+        if track.stream_url.endswith(".mpd"):
+            if os.path.exists(track.stream_url):
+                track.local_path = track.stream_url
+            return
+
         target_path = track.get_cache_filename()
 
         if target_path in self._download_tasks:
@@ -234,10 +239,29 @@ class MusicPlayer:
                 else track.stream_url
             )
 
+            # Build FFmpeg options dynamically
+            # b_opts = ['-user_agent "piped bot"']
+
+            # # If streaming from network OR playing a local .mpd (which fetches chunks from network)
+            # if play_url.startswith("http") or play_url.endswith(".mpd"):
+            #     b_opts.append("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
+
+            # # FIX: If playing an MPD, we MUST whitelist network protocols so it can fetch the segments!
+            # if play_url.endswith(".mpd"):
+            #     b_opts.append("-protocol_whitelist file,http,https,tcp,tls,crypto,data")
+
+                        # Build FFmpeg options dynamically
+            b_opts = []
+
+            if play_url.startswith("http"):
+                b_opts.append('-user_agent "piped bot"')
+                b_opts.append("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
+
+            if play_url.endswith(".mpd"):
+                b_opts.append("-protocol_whitelist file,http,https,tcp,tls,crypto,data")
+
             ffmpeg_opts = {
-                "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-                if not track.local_path
-                else "",
+                "before_options": " ".join(b_opts),
                 "options": "-vn",
             }
 
