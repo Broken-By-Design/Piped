@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any
 
+import re
 import yt_dlp
 
 YDL_OPTS: dict[str, Any] = {
@@ -30,8 +31,10 @@ def _extract(querey: str) -> dict:
         # Search resukts come back as entries[]; direct URLs are the info itself
         entry = info["entries"][0] if "entries" in info else info
 
+        title_res = re.sub(r'\(.*?\)', '', str(entry.get("title", "Unknown Title")))
+
         return {
-            "title": entry.get("title", "Unknown Title"),
+            "title": title_res,
             "artist": entry.get("uploader", "Unknown Artist"),
             "thumbnail": entry.get("thumbnail", ""),
             "duration": entry.get("duration", 0),

@@ -178,6 +178,10 @@ class MusicPlayer:
         self.current = None
         if self.voice_client:
             self.voice_client.stop()
+        await self._broadcast_state()
+
+    async def disconnect(self):
+        if self.voice_client:
             await self.voice_client.disconnect()
             self.voice_client = None
         await self._broadcast_state()

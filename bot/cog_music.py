@@ -104,7 +104,12 @@ class MusicCog(commands.Cog, name="Music"):
     @commands.hybrid_command(name="stop", description="Stop and disconnect")
     async def stop(self, ctx):
         await self.player.stop()
-        await ctx.reply("⏹ Stopped and disconnected.")
+        await ctx.reply("⏹ Music stopped")
+
+    @commands.hybrid_command(name="disconnect", description="Stop and disconnect")
+    async def disconnect(self, ctx):
+        await self.player.disconnect()
+        await ctx.reply("Bye Bye")
 
     @commands.hybrid_command(name="nowplaying", description="Show current track")
     async def nowplaying(self, ctx):
